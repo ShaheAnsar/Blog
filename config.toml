@@ -1,3 +1,6 @@
 baseURL = "http://example.org/"
 languageCode = "en-us"
-title = "My New Hugo Site"
+title = "Yet Another Technical Blog"
+theme = "papermod"
+[params]
+ShowToc = "true"

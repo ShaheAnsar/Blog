@@ -1,0 +1,11 @@
+---
+title: "Using Transistors With Motors"
+date: 2021-04-13T07:30:39+05:30
+draft: true
+---
+
+## Using transistors with motors (Or Any other Inductive Load)
+
+It's very common to want to interface with a motor in a simple manner (No direction control) or to switch relays
+with a GPIO pin. Unfortunately, they don't provide enough current, so don't use them for these applications - you'll damage the pin
+
