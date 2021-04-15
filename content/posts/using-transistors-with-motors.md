@@ -1,10 +1,10 @@
 ---
 title: "Using Transistors With Motors"
 date: 2021-04-13T07:30:39+05:30
-draft: true
+draft: false
 tags : ["transistor", "basics", "fundamentals", "MOSFET", "BJT"]
 ---
-## Using transistors with motors (Or Any other Inductive Load)
+## Using transistors with motors (Or Any other Load)
 
 It's very common to want to interface with a motor in a 
 simple manner (No direction control) or to switch relays
@@ -153,14 +153,20 @@ This voltage can very easily destroy the transistor, so it's important
 that we clamp the inductive spike.
 ![TIP122 thermal resistance](/using-transistors-with-motors-bc337datasheet7.png) 
 We just use the circuit above. Just put a diode across the load in the way
-shown, and you're transistor won't give out the magic smoke.
+shown, and you're transistor won't give out the magic smoke. A very simple way to find the
+direction the diode should be facing is to look at the current when the transistor is on.
+Add a wire around the load's terminals and imagine that current looping through it. Your
+diode should be added to the load's terminals so that this current is not blocked.
 
 ### Selecting a MOSFET
 Much of what we discussed applies directly to MOSFETs as well. There are
 some differences, and we'll only go through that.
 1. MOSFETs have no input current at DC. That doesn't mean we don't need to
 care about the input current at all as
-2. MOSFETs, especially power MOSFETs have significant input capactiance. This
+2. MOSFETs, especially power MOSFETs have significant input capactiance (The IRFz44n has
+a typical input capacitance of 1.5nF or so. Keep in mind that with FETs, 
+variations are quite huge, so the input capacitance can be fairly big in
+the worst case). This
 results in a lot of IO current and can damage your GPIO. MOSFETs with a logic
 level inputs should be used instead. Otherwise use a resistor to limit the
 current. You can get the resistance required by dividing your logic
@@ -169,12 +175,18 @@ a 5K resistor). This does mean that the switching time is increased. If
 switching time matters, and you can't go with a logic level input MOSFET, use
 a MOSFET driver IC. Also keep in mind, the MOSFET threshold voltage should
 be quite a bit lower than the IO voltage, otherwise you won't be able to
-turn the MOSFET on.
+turn the MOSFET on (unless you're using a MOSFET driver IC, in which case
+you'll need a separate power rail for your FET if your FET doesn't have a
+threshold voltage low enough)
 3. Power dissipation calculations with MOSFETs are different. Instead of the
 $V_{CEsat}$ with BJTs, we only need to worry about the on resistance denoted
 by $R_{DS(ON)}$. You can calculate power dissipated the same way you would
-with a resistor. This makes MOSFETs very efficient at high currents.
-4. 
+with a resistor. This makes MOSFETs very efficient at high currents as even
+at those currents the drop across a good power MOSFET is only 100mV or so.
+To give an example, $R_{DS(ON)}$ for an IRFZ44N is 17.5m$\Omega$ in the worst case scenario.
+4. Depending on how things are set up, it is ideal for your MOSFET gate
+to have a protection zener to make sure ESD doesn't puncture the gate insulation.
+Most modern MOSFETs will come with protection diodes, so it isn't a huge deal.
+My tip - better be safe than sorry.
 
-
-Some things to keep in mind
+Well that's it for today folks.
