@@ -20,8 +20,8 @@
                 <article>
                     <h1 class="entry-title"><a href="/fpgas-journey-to-riscv-p1.html">FPGAs - Journey to RISCV P1</a></h1>
 <footer class="post-info">
-        <abbr class="published" title="2024-08-24T00:00:00-04:00">
-                Published: Sat 24 August 2024
+        <abbr class="published" title="2024-10-08T00:00:00-04:00">
+                Published: Tue 08 October 2024
         </abbr>
 
         <address class="vcard author">
@@ -29,10 +29,11 @@
         </address>
 <p>In <a href="/category/fpga.html">FPGA</a>.</p>
 
-</footer><!-- /.post-info --><p>FPGAs are pretty cool - you can do some amazing stuff with them. Although I call this series journey to risc v, it's mostly just a scrambled blog of me fumbling my way through the entire journey, trying out interesting stuff along the way. Hope it's enjoyable for you guys to follow along.  </p>
+</footer><!-- /.post-info --><p>FPGAs are pretty cool - you can do some amazing stuff with them. Although I call this series journey to risc v, it's mostly just a scrambled blog of me going through the entire journey, trying out interesting stuff along the way. Hope it's enjoyable for you guys to follow along.  </p>
 <p>First things first, I am using a CYC1000 for most of these articles. I got it a few years ago for a pretty cheap price. Some of the instructions here are specific to the Quartus suite, but most should be "multi-platform".<br>
 We need some way of communicating the status of our system on the FPGA to our PC. Keeping with tradition, I choose UART as my protocol of choice to send data to/from my PC.
-We will implement a very simple UART module, both for TX and RX.  </p>
+We will implement a very simple UART module, both for TX and RX. We will look into TX
+in this post.</p>
 <h3>Uart Transmission</h3>
 <p>We will start with transmission, as that is an easier problem to solve.
 <img alt="Uart Image" src="images/uart3.png">
@@ -42,22 +43,20 @@ stop condition by staying HIGH. There can be a few variations on this, but we wi
 go for the most common form. Nice thing about working on an FPGA is that we
 can choose to make hardware bits as complicated or as simple as we want. We don't have
 to cater for possible use cases, we simply modify the hardware if necessary.</p>
-<div class="highlight"><pre><span></span><code><span class="k">module</span><span class="w"> </span><span class="n">uart_tx</span><span class="p">#(</span><span class="k">parameter</span><span class="w"> </span><span class="n">CLOCK</span><span class="o">=</span><span class="mh">12000000</span><span class="p">,</span><span class="w"> </span><span class="k">parameter</span><span class="w"> </span><span class="n">BAUDRATE</span><span class="o">=</span><span class="mh">115200</span><span class="p">)(</span><span class="k">output</span><span class="w"> </span><span class="n">tx_pin</span><span class="p">,</span>
+<div class="highlight"><pre><span></span><code><span class="k">module</span><span class="w"> </span><span class="n">uart_tx</span><span class="p">#(</span><span class="k">parameter</span><span class="w"> </span><span class="n">clock</span><span class="o">=</span><span class="mh">12000000</span><span class="p">,</span><span class="w"> </span><span class="k">parameter</span><span class="w"> </span><span class="n">baudrate</span><span class="o">=</span><span class="mh">115200</span><span class="p">)(</span><span class="k">output</span><span class="w"> </span><span class="n">tx_pin</span><span class="p">,</span>
 <span class="w">                        </span><span class="k">input</span><span class="w"> </span><span class="n">clk</span><span class="p">,</span><span class="w"> </span><span class="k">input</span><span class="p">[</span><span class="mh">32</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">baud_ctr_top</span><span class="p">,</span><span class="w"> </span><span class="k">input</span><span class="w"> </span><span class="n">n_reset</span><span class="p">,</span>
 <span class="w">                        </span><span class="k">input</span><span class="w"> </span><span class="n">start_write</span><span class="p">,</span><span class="w"> </span><span class="k">output</span><span class="w"> </span><span class="kt">reg</span><span class="w"> </span><span class="n">write_avl</span><span class="p">,</span><span class="w"> </span><span class="k">input</span><span class="w"> </span><span class="p">[</span><span class="mh">7</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_data</span><span class="p">);</span>
-<span class="k">localparam</span><span class="w"> </span><span class="n">baudgen_top_val</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CLOCK</span><span class="o">/</span><span class="n">BAUDRATE</span><span class="p">;</span>
+<span class="k">localparam</span><span class="w"> </span><span class="n">baudgen_top_val</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">clock</span><span class="o">/</span><span class="n">baudrate</span><span class="p">;</span>
 <span class="kt">reg</span><span class="p">[</span><span class="mh">32</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">baudgen_ctr</span><span class="p">;</span>
-<span class="kt">reg</span><span class="p">[</span><span class="mh">1</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_state</span><span class="p">;</span><span class="w"> </span><span class="c1">// Writer state</span>
-<span class="kt">reg</span><span class="p">[</span><span class="mh">9</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_reg</span><span class="p">;</span><span class="w"> </span><span class="c1">// Write shift register</span>
-<span class="kt">reg</span><span class="p">[</span><span class="mh">3</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">shifted_counter</span><span class="p">;</span><span class="w"> </span><span class="c1">// Used to keep track of how many we have shifted out</span>
-<span class="kt">reg</span><span class="w"> </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span><span class="w"> </span><span class="c1">// Used to enable the output. Set to 0 to enable the output</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">1</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_state</span><span class="p">;</span><span class="w"> </span><span class="c1">// writer state</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">9</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_reg</span><span class="p">;</span><span class="w"> </span><span class="c1">// write shift register</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">3</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">shifted_counter</span><span class="p">;</span><span class="w"> </span><span class="c1">// used to keep track of how many we have shifted out</span>
+<span class="kt">reg</span><span class="w"> </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span><span class="w"> </span><span class="c1">// used to enable the output. set to 0 to enable the output</span>
 <span class="kt">wire</span><span class="w"> </span><span class="n">baud_clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">baudgen_top_val</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">baudgen_ctr</span><span class="p">);</span>
-<span class="k">localparam</span><span class="w"> </span><span class="n">idle_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d0</span><span class="p">;</span><span class="w"> </span><span class="c1">// Common to both read and write</span>
-<span class="k">localparam</span><span class="w"> </span><span class="n">read_busy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d1</span><span class="p">;</span><span class="w"> </span><span class="c1">// Command has been given to start reading data</span>
-<span class="k">localparam</span><span class="w"> </span><span class="n">read_fin_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d2</span><span class="p">;</span><span class="w"> </span><span class="c1">// Read finished, data available in reg</span>
-<span class="k">localparam</span><span class="w"> </span><span class="n">write_busy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d1</span><span class="p">;</span><span class="w"> </span><span class="c1">// Writing is in progress</span>
+<span class="k">localparam</span><span class="w"> </span><span class="n">idle_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d0</span><span class="p">;</span>
+<span class="k">localparam</span><span class="w"> </span><span class="n">write_busy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d1</span><span class="p">;</span><span class="w"> </span><span class="c1">// writing is in progress</span>
 
-<span class="k">assign</span><span class="w"> </span><span class="n">tx_pin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">write_reg</span><span class="p">[</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">n_out_en</span><span class="p">;</span><span class="w"> </span><span class="c1">// If write state is not write_busy, tx_pin should always be high</span>
+<span class="k">assign</span><span class="w"> </span><span class="n">tx_pin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">write_reg</span><span class="p">[</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">n_out_en</span><span class="p">;</span><span class="w"> </span><span class="c1">// if write state is not write_busy, tx_pin should always be high</span>
 <span class="k">always</span><span class="w"> </span><span class="p">@(</span><span class="k">posedge</span><span class="w"> </span><span class="n">clk</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
 <span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">n_reset</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
 <span class="w">        </span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span>
@@ -65,7 +64,7 @@ to cater for possible use cases, we simply modify the hardware if necessary.</p>
 <span class="w">        </span><span class="n">write_reg</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span>
 <span class="w">        </span><span class="n">write_avl</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
 <span class="w">        </span><span class="n">write_state</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">idle_state</span><span class="p">;</span>
-<span class="w">        </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span><span class="w"> </span><span class="c1">// Disable the output</span>
+<span class="w">        </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span><span class="w"> </span><span class="c1">// disable the output</span>
 <span class="w">    </span><span class="k">end</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">begin</span>
 <span class="w">        </span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
 <span class="w">        </span><span class="k">if</span><span class="p">(</span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">baudgen_top_val</span><span class="p">)</span>
@@ -97,7 +96,7 @@ to cater for possible use cases, we simply modify the hardware if necessary.</p>
 <span class="w">                </span><span class="k">end</span>
 <span class="w">            </span><span class="k">end</span>
 <span class="w">            </span><span class="k">default</span><span class="o">:</span><span class="w"> </span><span class="k">begin</span>
-<span class="w">            </span><span class="c1">// Do nothing</span>
+<span class="w">            </span><span class="c1">// do nothing</span>
 <span class="w">            </span><span class="k">end</span>
 <span class="w">        </span><span class="k">endcase</span>
 <span class="w">    </span><span class="k">end</span>
@@ -107,24 +106,175 @@ to cater for possible use cases, we simply modify the hardware if necessary.</p>
 
 <p>That's a lotta code, but it should be simple enough once we understand how HDLs
 generally work. Unlike other programming languages, HDLs are used mainly to implement
-state machines. So we just need to understand the state machine.</p>                </article>
+state machines.</p>
+<h4>Baurate generation</h4>
+<p>Let's first start with clock generation. We need something that ticks
+at our desired baud rates. The baud generator in actual MCUs tend to be complicated.
+Now, I am not sure why, but I think it is done to provide a decently accurate
+baud generator across multiple frequencies. Of course, since our hardware is 
+configurable, we do not have such simple limits. We will make one with a simple
+counter. When the counter equals <code>baudgen_top_val</code>, we get a tick. The value is simple
+integer divison. I use parameters extensively in code. This allows me to repurpose
+code more easily. More importantly, it keeps the complexity of HDL code to a minimum.
+We don't need unnecessary mechanisms. The flexibility of an FPGA covers those cases.
+Simple is quicker, more often than not. Now, the more inquisitve readers will ask why not use this as the clock for the rest of the circuit. It's a great question. We do this because FPGAs have
+specific routing networks for clocks, and different ones for data. Our
+baudgen will end up being much less performant. Now, for the purposes of low speed
+UART this may not cause issues. As we increase the speed though, it will cause issues.
+In general, we want to use our actual clock to sample the tick,
+and if the tick is high, we perform the action.</p>
+<h5>The code</h5>
+<div class="highlight"><pre><span></span><code><span class="k">module</span><span class="w"> </span><span class="n">uart_tx</span><span class="p">#(</span><span class="k">parameter</span><span class="w"> </span><span class="n">CLOCK</span><span class="o">=</span><span class="mh">12000000</span><span class="p">,</span><span class="w"> </span><span class="k">parameter</span><span class="w"> </span><span class="n">BAUDRATE</span><span class="o">=</span><span class="mh">115200</span><span class="p">)(...);</span>
+<span class="k">localparam</span><span class="w"> </span><span class="n">baudgen_top_val</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CLOCK</span><span class="o">/</span><span class="n">BAUDRATE</span><span class="p">;</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">32</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">baudgen_ctr</span><span class="p">;</span>
+<span class="p">...</span>
+<span class="kt">wire</span><span class="w"> </span><span class="n">baud_clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">baudgen_top_val</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">baudgen_ctr</span><span class="p">);</span>
+<span class="p">...</span>
+<span class="k">always</span><span class="w"> </span><span class="p">@(</span><span class="k">posedge</span><span class="w"> </span><span class="n">clk</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">n_reset</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">        </span><span class="c1">// Reset bit, not important</span>
+<span class="w">    </span><span class="k">end</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">        </span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
+<span class="w">        </span><span class="k">if</span><span class="p">(</span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">baudgen_top_val</span><span class="p">)</span>
+<span class="w">            </span><span class="n">baudgen_ctr</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span>
+<span class="w">        </span><span class="p">...</span>
+<span class="w">    </span><span class="k">end</span>
+<span class="k">end</span><span class="w">                 </span>
+<span class="k">endmodule</span>
+</code></pre></div>
+
+<p>If you are new to verilog, much of this will be difficult to parse. Keep this in mind  </p>
+<ul>
+<li>parameters are constants</li>
+<li>wires are used to connect bits of data together and perform combinational logic</li>
+<li>always blocks are used to perform sequential logic (It is capable of more, but lets keep things simple for now)</li>
+<li>posedge means the rising edge</li>
+<li><code>&lt;=</code> performs non-blocking assignments. All this means is that all the assignments are done in one go towards the end, so the value does not change after the assignment. It can be a bit difficult to wrap your head around this if you are not a hardware person.
+The above code is a simple up counter. It counts up every clock, and resets when it
+reaches a particular value. The wire <code>baudgen_clock</code> is one when the counter equals
+the top value. It can be thought of as pulsing at the baudrate frequency.</li>
+</ul>
+<h4>Getting data ready</h4>
+<p>Now that we have our clock, we need to get our data ready. Once the device is reset,
+we are in the idle state. Like the name suggests, we do nothing here. We wait for the
+start condition, trigerred by a HIGH on our input <code>start_write</code>. Once we detect this
+condition, we ready the shift register, reset bookkeeping variables, and switch to the
+state <code>write_busy</code>. The way we ready the shift register needs some explanation. Since
+our output is essentially just the last bit of the register OR'ed with an enable flag,
+we can directly inject the start and the stop bit into the shift register. The LSB willbe 0, and the MSB will be 1, signaling a start and a stop condition.</p>
+<h5>The code</h5>
+<div class="highlight"><pre><span></span><code><span class="k">module</span><span class="w"> </span><span class="n">uart_tx</span><span class="p">#(...);</span>
+<span class="p">...</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">1</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_state</span><span class="p">;</span><span class="w"> </span><span class="c1">// writer state</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">9</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_reg</span><span class="p">;</span><span class="w"> </span><span class="c1">// write shift register</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">3</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">shifted_counter</span><span class="p">;</span><span class="w"> </span><span class="c1">// used to keep track of how many we have shifted out</span>
+<span class="kt">reg</span><span class="w"> </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span><span class="w"> </span><span class="c1">// used to enable the output. set to 0 to enable the output</span>
+<span class="p">...</span>
+<span class="k">localparam</span><span class="w"> </span><span class="n">idle_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d0</span><span class="p">;</span>
+<span class="k">localparam</span><span class="w"> </span><span class="n">write_busy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">2</span><span class="mi">&#39;d1</span><span class="p">;</span><span class="w"> </span><span class="c1">// writing is in progress</span>
+
+<span class="k">assign</span><span class="w"> </span><span class="n">tx_pin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">write_reg</span><span class="p">[</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">n_out_en</span><span class="p">;</span><span class="w"> </span><span class="c1">// if write state is not write_busy, tx_pin should always be high</span>
+<span class="k">always</span><span class="w"> </span><span class="p">@(</span><span class="k">posedge</span><span class="w"> </span><span class="n">clk</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">n_reset</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">        </span><span class="p">...</span>
+<span class="w">        </span><span class="c1">// Reset, ignore</span>
+<span class="w">    </span><span class="k">end</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">        </span><span class="p">...</span>
+
+<span class="w">        </span><span class="k">case</span><span class="p">(</span><span class="n">write_state</span><span class="p">)</span>
+<span class="w">            </span><span class="nl">idle_state:</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">             </span><span class="k">if</span><span class="p">(</span><span class="n">start_write</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">                </span><span class="n">write_reg</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="p">{</span><span class="mh">1</span><span class="mb">&#39;b1</span><span class="p">,</span><span class="w"> </span><span class="n">write_data</span><span class="p">,</span><span class="w"> </span><span class="mh">1</span><span class="mb">&#39;b0</span><span class="p">};</span>
+<span class="w">                </span><span class="n">write_state</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">write_busy</span><span class="p">;</span>
+<span class="w">                </span><span class="n">write_avl</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span>
+<span class="w">                </span><span class="n">shifted_counter</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span>
+<span class="w">             </span><span class="k">end</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">                </span><span class="n">write_avl</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
+<span class="w">            </span><span class="k">end</span>
+<span class="w">            </span><span class="k">end</span>
+<span class="w">            </span><span class="nl">write_busy:</span><span class="w"> </span><span class="k">begin</span><span class="w"> </span><span class="c1">//shift out data</span>
+<span class="w">                </span><span class="p">...</span>
+<span class="w">            </span><span class="k">end</span>
+<span class="w">            </span><span class="k">default</span><span class="o">:</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">            </span><span class="c1">// do nothing</span>
+<span class="w">            </span><span class="k">end</span>
+<span class="w">        </span><span class="k">endcase</span>
+<span class="w">    </span><span class="k">end</span>
+<span class="k">end</span><span class="w">                 </span>
+<span class="k">endmodule</span>
+</code></pre></div>
+
+<p>We need to be careful about bookkeeping with state machines. The nice things about
+state machines is that it makes it easier. Unfortunately, it can still be somewhat of
+a pain to debug. Here, we give out signals to let the outside world understand
+whether we are free to take a transmission request or not. We need to change it from HIGH when free to LOW when not. It's best to handle these in the transitions from one
+state to another.</p>
+<h4>Shifting out data</h4>
+<p>Now, verilog has some very nifty
+syntax that allows us to implement a shift register in one line - </p>
+<div class="highlight"><pre><span></span><code><span class="n">write_reg</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="p">{</span><span class="mh">1</span><span class="mb">&#39;b1</span><span class="p">,</span><span class="w"> </span><span class="n">write_reg</span><span class="p">[</span><span class="mh">9</span><span class="o">:</span><span class="mh">1</span><span class="p">]};</span>
+</code></pre></div>
+
+<p>All this does is shift the data to the right, and fill in the MSB with a binary one.
+That binary one is used to emit the stop bit. Of course, how do we know when to stop
+shifting? We are shifting out the standard 8 bit frame, a start bit and a stop bit.
+So 10 bits total. We must shift 10 times to shift the data out entirely. We use a
+counter to keep track of it. Once we have shifted the data out, we must disable the
+output flag, do some bookkeeping and shift back to the idle state.</p>
+<h5>The code</h5>
+<div class="highlight"><pre><span></span><code><span class="k">module</span><span class="w"> </span><span class="n">uart_tx</span><span class="p">#(...);</span>
+<span class="p">...</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">9</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">write_reg</span><span class="p">;</span><span class="w"> </span><span class="c1">// write shift register</span>
+<span class="kt">reg</span><span class="p">[</span><span class="mh">3</span><span class="o">:</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="n">shifted_counter</span><span class="p">;</span><span class="w"> </span><span class="c1">// used to keep track of how many we have shifted out</span>
+<span class="kt">reg</span><span class="w"> </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span><span class="w"> </span><span class="c1">// used to enable the output. set to 0 to enable the output</span>
+<span class="p">...</span>
+<span class="k">assign</span><span class="w"> </span><span class="n">tx_pin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">write_reg</span><span class="p">[</span><span class="mh">0</span><span class="p">]</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">n_out_en</span><span class="p">;</span><span class="w"> </span><span class="c1">// if write state is not write_busy, tx_pin should always be high</span>
+<span class="k">always</span><span class="w"> </span><span class="p">@(</span><span class="k">posedge</span><span class="w"> </span><span class="n">clk</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">    </span><span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">n_reset</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">        </span><span class="p">...</span>
+<span class="w">    </span><span class="k">end</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">        </span><span class="p">...</span>
+<span class="w">        </span><span class="k">case</span><span class="p">(</span><span class="n">write_state</span><span class="p">)</span>
+<span class="w">            </span><span class="nl">idle_state:</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">                </span><span class="p">...</span>
+<span class="w">            </span><span class="k">end</span>
+<span class="w">            </span><span class="nl">write_busy:</span><span class="w"> </span><span class="k">begin</span><span class="w"> </span><span class="c1">//shift out data</span>
+<span class="w">                </span><span class="k">if</span><span class="p">(</span><span class="n">shifted_counter</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mh">4</span><span class="mi">&#39;d10</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">                    </span><span class="n">write_state</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">idle_state</span><span class="p">;</span>
+<span class="w">                    </span><span class="n">write_avl</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
+<span class="w">                    </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
+<span class="w">                </span><span class="k">end</span>
+<span class="w">                </span><span class="k">if</span><span class="p">(</span><span class="n">n_out_en</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mh">1</span><span class="mb">&#39;b1</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">                    </span><span class="k">if</span><span class="p">(</span><span class="n">baud_clock</span><span class="p">)</span><span class="w"> </span><span class="n">n_out_en</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mh">0</span><span class="p">;</span>
+<span class="w">                </span><span class="k">end</span>
+<span class="w">                </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="p">(</span><span class="n">baud_clock</span><span class="p">)</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">                </span><span class="n">write_reg</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="p">{</span><span class="mh">1</span><span class="mb">&#39;b1</span><span class="p">,</span><span class="w"> </span><span class="n">write_reg</span><span class="p">[</span><span class="mh">9</span><span class="o">:</span><span class="mh">1</span><span class="p">]};</span>
+<span class="w">                </span><span class="n">shifted_counter</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">shifted_counter</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mh">1</span><span class="p">;</span>
+<span class="w">                </span><span class="k">end</span>
+<span class="w">            </span><span class="k">end</span>
+<span class="w">            </span><span class="k">default</span><span class="o">:</span><span class="w"> </span><span class="k">begin</span>
+<span class="w">            </span><span class="c1">// do nothing</span>
+<span class="w">            </span><span class="k">end</span>
+<span class="w">        </span><span class="k">endcase</span>
+<span class="w">    </span><span class="k">end</span>
+<span class="k">end</span><span class="w">                 </span>
+<span class="k">endmodule</span>
+</code></pre></div>
+
+<p>We first enable the output if it is disabled. If it is enabled, we move to shifting.
+Everytime we shift, we increment out counter. Keep in mind that we only shift when
+baud tick is HIGH. The rest of the book keeping happens at internal clock speeds.
+Once we have shifted out 10 bits, we stop, show the world that we can transmit again
+and switch back to idle mode.  </p>
+<p>That will be it. Next part will be posted soon!</p>                </article>
             </aside><!-- /#featured -->
         <section id="extras" class="body">
-                <div class="blogroll">
-                        <h2>links</h2>
-                        <ul>
-                            <li><a href="https://getpelican.com/">Pelican</a></li>
-                            <li><a href="https://www.python.org/">Python.org</a></li>
-                            <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
-                            <li><a href="#">You can modify those links in your config file</a></li>
-                        </ul>
-                </div><!-- /.blogroll -->
                 <div class="social">
                         <h2>social</h2>
                         <ul>
 
-                            <li><a href="#">You can add links in your config file</a></li>
-                            <li><a href="#">Another social link</a></li>
+                            <li><a href="https://www.linkedin.com/in/muzzammil-shahe-ansar-02432620a/">LinkedIn</a></li>
+                            <li><a href="https://x.com/Bsbs32665885">Twitter</a></li>
                         </ul>
                 </div><!-- /.social -->
         </section><!-- /#extras -->
